@@ -63,7 +63,7 @@ Windows:
 {
   "mcpServers": {
     "pega-review": {
-      "command": "python",
+      "command": "py",
       "args": ["C:\\Users\\YourName\\Pega-Code-Review-MCP\\server.py"],
       "env": {
         "PEGA_BASE_URL": "https://your-server.pegacloud.net/prweb",
