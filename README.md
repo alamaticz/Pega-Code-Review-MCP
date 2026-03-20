@@ -26,9 +26,9 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```
-PEGA_BASE_URL=https://pdsllc-dt1.pegacloud.io/prweb
-PEGA_USERNAME=Admin@LogAnalyzer
-PEGA_PASSWORD=rules@123
+PEGA_BASE_URL=xxxx
+PEGA_USERNAME=xxxx
+PEGA_PASSWORD=xxxx
 ```
 
 ### 3. (Optional) Test server locally
@@ -54,9 +54,9 @@ Open `%APPDATA%\Claude\claude_desktop_config.json` and add this entry under `mcp
         "C:\\Users\\Manoj\\OneDrive\\Desktop\\Projects\\Pega-Review-MCP\\server.py"
       ],
       "env": {
-        "PEGA_BASE_URL": "https://pdsllc-dt1.pegacloud.io/prweb",
-        "PEGA_USERNAME": "Admin@LogAnalyzer",
-        "PEGA_PASSWORD": "rules@123"
+        "PEGA_BASE_URL": "xxxxx",
+        "PEGA_USERNAME": "xxxxx",
+        "PEGA_PASSWORD": "xxxxx"
       }
     }
   }
@@ -83,8 +83,58 @@ In Claude, try:
 4. `pega_get_referenced_rules` — fetch XMLs of all referenced rules
 5. Analyse everything and write the LSA review
 
-## Adding Skills Later
+## Add Skills in Claude Desktop
 
-Drop `.skill` files into `../skills/` for rule-type-specific review checklists
-(Activity, Data Transform, Connect REST, etc.) and instruct Claude to use them
-during review.
+This repo already includes two packaged skills:
+
+- `pega-lsa-review-format.skill`
+- `pega-rule-doc-skill.skill`
+
+Claude loads local skills from folders under:
+
+```
+%USERPROFILE%\.claude\skills\<skill-folder>\SKILL.md
+```
+
+### 1. Install the packaged skills (Windows PowerShell)
+Run from this repo root:
+
+```powershell
+$skillsRoot = "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType Directory -Force -Path $skillsRoot | Out-Null
+
+# Install pega-lsa-review-format skill (archive contains SKILL.md at root)
+$lsaDir = Join-Path $skillsRoot "pega-lsa-review-format"
+New-Item -ItemType Directory -Force -Path $lsaDir | Out-Null
+tar -xf .\pega-lsa-review-format.skill -C $lsaDir
+
+# Install pega-rule-doc skill (archive contains its own folder)
+tar -xf .\pega-rule-doc-skill.skill -C $skillsRoot
+```
+
+### 2. Verify the skills are installed
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\.claude\skills" -Recurse -Filter SKILL.md |
+  Select-Object -ExpandProperty FullName
+```
+
+You should see entries similar to:
+
+- `%USERPROFILE%\.claude\skills\pega-lsa-review-format\SKILL.md`
+- `%USERPROFILE%\.claude\skills\pega-rule-doc-skill\SKILL.md`
+
+### 3. Restart Claude Desktop
+Close and reopen Claude Desktop so it refreshes skill discovery.
+
+### 4. Confirm in chat
+In Claude, ask:
+
+1. "What skills are available?"
+2. Invoke `/pega-lsa-review-format` for review output structure
+3. Invoke `/pega-rule-doc` for rule XML documentation generation
+
+### 5. Use skills with this MCP server
+
+- Use `/pega-lsa-review-format` before running branch/rule review with MCP tools.
+- Use `/pega-rule-doc` when generating full technical documentation from exported rule XML.
