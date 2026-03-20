@@ -12,65 +12,98 @@ full LSA-grade code reviews natively — no scripts, no GPT, just Claude.
 | `pega_get_rule_xml` | `D_BranchAnalyzerAPI` | Fetch full XML of any rule by pzInsKey |
 | `pega_get_referenced_rules` | `D_BranchAnalyzerAPI` (×N) | Fetch XMLs of all rules referenced by a rule |
 
-## Run in Claude Desktop
+## Running in Claude Desktop
 
-### 1. Install dependencies
-From this project folder, install Python dependencies:
+### Step 1 -- Prerequisites
+
+- Python 3.10+ installed
+- Claude Desktop installed
+- A running Pega instance (8.3-8.6, section-based UI)
+
+### Step 2 -- Clone & Install
+
+If this is your first time setup:
 
 ```bash
-cd C:\Users\Manoj\OneDrive\Desktop\Projects\Pega-Review-MCP
+git clone https://github.com/alamaticz/Pega-Code-Review-MCP.git
+cd Pega-Code-Review-MCP
 pip install -r requirements.txt
 ```
 
-### 2. Set Pega credentials
-Create a `.env` file in the project root:
-
-```
-PEGA_BASE_URL=xxxx
-PEGA_USERNAME=xxxx
-PEGA_PASSWORD=xxxx
-```
-
-### 3. (Optional) Test server locally
-Run:
+If you already have this repo locally:
 
 ```bash
-python server.py
+cd Pega-Code-Review-MCP
+git pull origin main
+pip install -r requirements.txt
 ```
 
-If credentials are configured, the process will start and wait for MCP stdio requests.
-Use `Ctrl+C` to stop it.
+After install, note the full absolute path to `server.py` -- you will use it in Claude Desktop config.
 
-### 4. Add MCP server to Claude Desktop
-Open `%APPDATA%\Claude\claude_desktop_config.json` and add this entry under `mcpServers`
-(or merge it into your existing JSON):
+Windows example: `C:\Users\YourName\Pega-Code-Review-MCP\server.py`
+
+macOS / Linux example: `/Users/yourname/Pega-Code-Review-MCP/server.py`
+
+### Step 3 -- Edit Claude Desktop Config
+
+Open the Claude Desktop configuration file in a text editor:
+
+| OS | Config file location |
+|----|----------------------|
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+
+If the file does not exist, create it.
+
+Add the following (replace the `args` path and credentials with your own values).
+
+Windows:
 
 ```json
 {
   "mcpServers": {
     "pega-review": {
       "command": "python",
-      "args": [
-        "C:\\Users\\Manoj\\OneDrive\\Desktop\\Projects\\Pega-Review-MCP\\server.py"
-      ],
+      "args": ["C:\\Users\\YourName\\Pega-Code-Review-MCP\\server.py"],
       "env": {
-        "PEGA_BASE_URL": "xxxxx",
-        "PEGA_USERNAME": "xxxxx",
-        "PEGA_PASSWORD": "xxxxx"
+        "PEGA_BASE_URL": "https://your-server.pegacloud.net/prweb",
+        "PEGA_USERNAME": "your_operator_id",
+        "PEGA_PASSWORD": "your_password"
       }
     }
   }
 }
 ```
 
-If you use a virtual environment, set `command` to your venv Python executable
-(for example: `C:\\path\\to\\venv\\Scripts\\python.exe`).
+macOS / Linux:
 
-### 5. Restart Claude Desktop
-Close and reopen Claude Desktop so it loads the MCP server.
+```json
+{
+  "mcpServers": {
+    "pega-review": {
+      "command": "python3",
+      "args": ["/Users/yourname/Pega-Code-Review-MCP/server.py"],
+      "env": {
+        "PEGA_BASE_URL": "https://your-server.pegacloud.net/prweb",
+        "PEGA_USERNAME": "your_operator_id",
+        "PEGA_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
 
-### 6. Verify tools are available
-In Claude, try:
+Note: If you already have other MCP servers in the config, add the `pega-review` block inside the existing `mcpServers` object -- do not create a second `mcpServers` key.
+
+If you use a virtual environment, set `command` to your venv Python executable instead of `python` / `python3`.
+
+### Step 4 -- Restart Claude Desktop
+
+Fully quit and reopen Claude Desktop. The Pega review MCP tools will appear in the tools panel.
+
+### Step 5 -- Quick verification
+
+In Claude, run:
 
 1. "List available MCP tools"
 2. `pega_list_branches`
