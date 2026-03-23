@@ -155,6 +155,18 @@ class GetRuleXmlInput(BaseModel):
                     "(e.g. 'RULE-OBJ-ACTIVITY PDS-CCPM-WORK-RTS TRIGGERRTSREQUEST #20260319T064123.904 GMT').",
         min_length=10,
     )
+    app_name: Optional[str] = Field(
+        default=None,
+        description="Application name as returned by pega_list_branches (e.g. 'Monitoring'). "
+                    "Required for Pega instances that scope rule resolution by application.",
+        max_length=200,
+    )
+    app_version: Optional[str] = Field(
+        default=None,
+        description="Application version as returned by pega_list_branches (e.g. '01.01.01'). "
+                    "Required alongside app_name for application-scoped rule resolution.",
+        max_length=50,
+    )
 
 
 class GetReferencedRulesInput(BaseModel):
@@ -172,6 +184,18 @@ class GetReferencedRulesInput(BaseModel):
         description="Optional rule type filter on the referenced rules "
                     "(e.g. 'Activity', 'Data Transform', 'Connect REST'). Case-insensitive.",
         max_length=100,
+    )
+    app_name: Optional[str] = Field(
+        default=None,
+        description="Application name as returned by pega_list_branches (e.g. 'Monitoring'). "
+                    "Required for Pega instances that scope rule resolution by application.",
+        max_length=200,
+    )
+    app_version: Optional[str] = Field(
+        default=None,
+        description="Application version as returned by pega_list_branches (e.g. '01.01.01'). "
+                    "Required alongside app_name for application-scoped rule resolution.",
+        max_length=50,
     )
 
 
@@ -405,7 +429,12 @@ async def pega_get_rule_xml(params: GetRuleXmlInput) -> str:
     """
     try:
         encoded = _encode_ins_key(params.pz_ins_key)
-        data    = await _pega_get("/api/v1/data/D_BranchAnalyzerAPI", params={"RuleInsKey": encoded})
+        api_params: dict = {"RuleInsKey": encoded}
+        if params.app_name:
+            api_params["ApplicationName"] = params.app_name
+        if params.app_version:
+            api_params["ApplicationVersion"] = params.app_version
+        data    = await _pega_get("/api/v1/data/D_BranchAnalyzerAPI", params=api_params)
 
         rules = data.get("response_page", {}).get("rules", []) or data.get("rules", [])
         if not rules:
@@ -511,7 +540,12 @@ async def pega_get_referenced_rules(params: GetReferencedRulesInput) -> str:
     try:
         # Step 1: fetch the source rule to get its referenced_rule list
         encoded  = _encode_ins_key(params.pz_ins_key)
-        data     = await _pega_get("/api/v1/data/D_BranchAnalyzerAPI", params={"RuleInsKey": encoded})
+        api_params: dict = {"RuleInsKey": encoded}
+        if params.app_name:
+            api_params["ApplicationName"] = params.app_name
+        if params.app_version:
+            api_params["ApplicationVersion"] = params.app_version
+        data     = await _pega_get("/api/v1/data/D_BranchAnalyzerAPI", params=api_params)
 
         rules = data.get("response_page", {}).get("rules", []) or data.get("rules", [])
         if not rules:
@@ -563,8 +597,13 @@ async def pega_get_referenced_rules(params: GetReferencedRulesInput) -> str:
             if not ref_key:
                 return result
             try:
-                enc  = _encode_ins_key(ref_key)
-                resp = await _pega_get("/api/v1/data/D_BranchAnalyzerAPI", params={"RuleInsKey": enc})
+                enc        = _encode_ins_key(ref_key)
+                ref_params: dict = {"RuleInsKey": enc}
+                if params.app_name:
+                    ref_params["ApplicationName"] = params.app_name
+                if params.app_version:
+                    ref_params["ApplicationVersion"] = params.app_version
+                resp = await _pega_get("/api/v1/data/D_BranchAnalyzerAPI", params=ref_params)
                 sub  = resp.get("response_page", {}).get("rules", []) or resp.get("rules", [])
                 if sub:
                     ri = sub[0].get("rule_info", "")
