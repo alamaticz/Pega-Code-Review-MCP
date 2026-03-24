@@ -36,8 +36,6 @@ The `pega-review` MCP server provides four tools. Use them in order:
 | `pega_get_rule_xml` | `D_BranchAnalyzerAPI` | To get full XML of any rule |
 | `pega_get_referenced_rules` | `D_BranchAnalyzerAPI` ×N | To get XMLs of all referenced rules |
 
-If the MCP tools are unavailable, tell the user and ask them to paste the rule XML directly.
-
 ---
 
 ## Review Workflow
@@ -56,63 +54,19 @@ Call `pega_get_branch_rules` with the branch ID.
 Scan the results for at least one Activity and one Data Transform to review.
 If the user specified rule types or names, filter accordingly.
 
-Count the rules to be reviewed. This determines whether you work alone or delegate:
-
-- **3 rules or fewer** → continue to step 3 and do the review yourself.
-- **4 rules or more** → go to the **Parallel Delegation** section below before step 3.
-
 ---
 
-## Parallel Delegation (4+ Rules)
-
-When the branch has 4 or more rules, split the work across parallel subagents.
-Do not start fetching XMLs yourself. Instead:
-
-### Split the rules into chunks
-
-Divide the full rule list into chunks of 4–6 rules each. Examples:
-- 8 rules → 2 chunks of 4
-- 12 rules → 2 chunks of 6
-- 17 rules → 3 chunks of 5/6/6
-- 24 rules → 4 chunks of 6
-
-### Launch all subagents in a single response
-
-In one response, use the Agent tool to launch all subagents simultaneously.
-Each subagent must receive:
-1. The list of `pz_ins_key` values assigned to it
-2. The branch name (for context in findings)
-3. The full instructions below
-
-**Subagent instructions (embed verbatim in each Agent prompt):**
-
-> You are a Pega Lead System Architect performing a code review.
-> You have access to the `pega-review` MCP tools:
-> - `pega_get_rule_xml` — fetch full XML for a rule by pz_ins_key
-> - `pega_get_referenced_rules` — fetch XMLs of all rules referenced by a rule
->
-> For each rule in your assigned list:
-> 1. Call `pega_get_rule_xml` with its `pz_ins_key`
-> 2. Call `pega_get_referenced_rules` for that rule
-> 3. Read both the primary XML and all referenced rule XMLs carefully
-> 4. Apply the `pega-lsa-review-format` skill to write a full per-rule review block
->
-> Return all per-rule review blocks as your final response.
-> Do not write a branch summary — the orchestrating agent will do that.
-> Do not skip referenced rules. Cross-rule compounding defects are often the most severe.
-
-### Wait for all subagents to return
-
-Once all subagents have returned their per-rule blocks, proceed to step 6.
-
----
-
-### 3. Fetch Primary Rule XMLs *(sequential path — 3 rules or fewer)*
+### 3. Fetch Primary Rule XMLs
 
 For each rule being reviewed, call `pega_get_rule_xml` with its `pz_ins_key`.
 The response includes:
 - `rule_info` — the full XML (steps, mappings, conditions, parameters, security)
 - `referenced_rules` — list of every rule this rule calls or references
+
+**If the result is saved to a file (too large to return inline):**
+- Try the **Read tool** with `offset` and `limit` (e.g. limit: 100, then increment offset by 100)
+- If Read also fails with a token-limit error, use the **Grep tool** with `output_mode: "content"` and `head_limit`/`offset` to page through the file section by section, or grep for specific XML tags you need
+- Do NOT use bash, node, or any shell command — ever
 
 Read the `rule_info` XML carefully before moving to step 4.
 
@@ -139,11 +93,6 @@ Trace data flow end-to-end: what goes into the rule, what comes out, where does 
 Apply the `pega-lsa-review-format` skill to structure and write the findings.
 That skill defines the per-rule block template, severity tiers, verdict criteria,
 and the cross-rule branch summary table.
-
-When consolidating subagent output (parallel path):
-- Collect all per-rule blocks from subagents in rule-list order
-- Deduplicate any cross-rule findings that multiple subagents flagged independently
-- Write the Branch Summary table using the worst verdict across all rules
 
 ---
 
