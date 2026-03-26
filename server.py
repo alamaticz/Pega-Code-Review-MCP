@@ -6,16 +6,18 @@ Provides tools for fetching Pega rule data (branches, rules, XML, referenced rul
 to enable AI-driven LSA code reviews directly inside Claude.
 
 Tools:
-  pega_list_branches        — List all branches from D_GetAvailableBranchesForAppStack
-  pega_get_branch_rules     — Get all rules in a branch from D_BranchContent
-  pega_get_rule_xml         — Fetch full rule XML via D_BranchAnalyzerAPI
-  pega_get_referenced_rules — Extract referenced rules list from a rule's XML response
+  pega_list_branches           — List all branches from D_GetAvailableBranchesForAppStack
+  pega_get_branch_rules        — Get all rules in a branch from D_BranchContent
+  pega_get_rule_xml            — Fetch full rule XML via D_BranchAnalyzerAPI
+  pega_get_referenced_rules    — Extract referenced rules list from a rule's XML response
+  pega_get_implicit_references — Parse pxRuleReferences from rule XML without extra API calls
 """
 
 import os
 import json
 import base64
 import sys
+import xml.etree.ElementTree as ET
 from typing import Optional, List
 from enum import Enum
 
@@ -622,6 +624,94 @@ async def pega_get_referenced_rules(params: GetReferencedRulesInput) -> str:
 
     except Exception as e:
         return _handle_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Tool 5: pega_get_implicit_references
+# ---------------------------------------------------------------------------
+
+class GetImplicitReferencesInput(BaseModel):
+    """Input for parsing pxRuleReferences from a rule XML string."""
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+
+    rule_xml: str = Field(
+        ...,
+        description="Full raw XML string of a Pega rule (as returned in rule_info from pega_get_rule_xml). "
+                    "Works for any rule type: Activity, Data Transform, Collection, Decision Table, Data Page, etc.",
+        min_length=10,
+    )
+
+
+@mcp.tool(
+    name="pega_get_implicit_references",
+    annotations={
+        "title": "Parse Implicit Rule References from XML",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+def pega_get_implicit_references(params: GetImplicitReferencesInput) -> str:
+    """Parse all implicitly referenced rules from pxRuleReferences in a Pega rule XML.
+
+    Extracts the pxRuleReferences repeating page list that Pega automatically
+    populates when any rule is saved. This is an offline parse — no API calls
+    are made. Works identically for Activity, Data Transform, Collection,
+    Decision Table, Data Page, Connect REST, or any other rule type.
+
+    Each entry in the output uses the raw Pega internal keys (not human-readable
+    labels) so they can be passed directly to Pega APIs.
+
+    Args:
+        params (GetImplicitReferencesInput):
+            - rule_xml (str): Full XML string from pega_get_rule_xml's rule_info field
+
+    Returns:
+        str: JSON array of referenced rule entries:
+        [
+            {
+                "RuleName": str,    # pyRuleName — display name of the referenced rule
+                "RuleType": str     # pxRuleObjClass — e.g. "Rule-Obj-Activity"
+            }
+        ]
+
+    Examples:
+        - Parse references from an Activity XML:
+            rule_xml="<pega:RuleSet ...>...</pega:RuleSet>"
+        - Parse references from a Data Transform XML:
+            rule_xml="<pega:RuleSet ...>...</pega:RuleSet>"
+    """
+    try:
+        root = ET.fromstring(params.rule_xml)
+    except ET.ParseError as e:
+        return f"Error: Could not parse XML — {e}"
+
+    results = []
+    seen: set = set()
+
+    for row in root.findall(".//pxRuleReferences/rowdata"):
+        rule_name  = (row.findtext("pyRuleName")     or "").strip()
+        obj_class  = (row.findtext("pxRuleObjClass") or "").strip()
+        class_name = (row.findtext("pxRuleClassName") or "").strip()
+
+        if not rule_name or not obj_class:
+            continue
+
+        dedup_key = (rule_name, obj_class)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        results.append({
+            "RuleName": rule_name,
+            "RuleType": obj_class,
+        })
+
+    if not results:
+        return json.dumps([])
+
+    return json.dumps(results, indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
