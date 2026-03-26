@@ -649,51 +649,51 @@ class GetImplicitReferencesInput(BaseModel):
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
-        "openWorldHint": False,
+        "openWorldHint": True,
     },
 )
-def pega_get_implicit_references(params: GetImplicitReferencesInput) -> str:
-    """Parse all implicitly referenced rules from pxRuleReferences in a Pega rule XML.
+async def pega_get_implicit_references(params: GetImplicitReferencesInput) -> str:
+    """Parse pxRuleReferences from a Pega rule XML, then resolve each reference via D_GetListOfRelatedRules.
 
-    Extracts the pxRuleReferences repeating page list that Pega automatically
-    populates when any rule is saved. This is an offline parse — no API calls
-    are made. Works identically for Activity, Data Transform, Collection,
-    Decision Table, Data Page, Connect REST, or any other rule type.
-
-    Each entry in the output uses the raw Pega internal keys (not human-readable
-    labels) so they can be passed directly to Pega APIs.
+    Step 1 — Parses pxRuleReferences from the provided XML (works for any rule type).
+    Step 2 — For each unique (RuleName, RuleType), calls D_GetListOfRelatedRules to
+              retrieve all matching pzInsKeys, classes, and ruleset versions from Pega.
 
     Args:
         params (GetImplicitReferencesInput):
             - rule_xml (str): Full XML string from pega_get_rule_xml's rule_info field
 
     Returns:
-        str: JSON array of referenced rule entries:
+        str: JSON array where each entry contains the reference plus its resolved instances:
         [
             {
-                "RuleName": str,    # pyRuleName — display name of the referenced rule
-                "RuleType": str     # pxRuleObjClass — e.g. "Rule-Obj-Activity"
+                "RuleName": str,          # pyRuleName from pxRuleReferences
+                "RuleType": str,          # pxRuleObjClass — e.g. "Rule-Obj-Activity"
+                "RelatedRules": [         # pxResults from D_GetListOfRelatedRules
+                    {
+                        "pzInsKey":          str,
+                        "pyClassName":       str,
+                        "pyRuleSet":         str,
+                        "pyRuleSetVersion":  str,
+                        "pyRuleAvailable":   str
+                    }
+                ]
             }
         ]
-
-    Examples:
-        - Parse references from an Activity XML:
-            rule_xml="<pega:RuleSet ...>...</pega:RuleSet>"
-        - Parse references from a Data Transform XML:
-            rule_xml="<pega:RuleSet ...>...</pega:RuleSet>"
     """
+    import asyncio
+
     try:
         root = ET.fromstring(params.rule_xml)
     except ET.ParseError as e:
         return f"Error: Could not parse XML — {e}"
 
-    results = []
+    refs = []
     seen: set = set()
 
     for row in root.findall(".//pxRuleReferences/rowdata"):
-        rule_name  = (row.findtext("pyRuleName")     or "").strip()
-        obj_class  = (row.findtext("pxRuleObjClass") or "").strip()
-        class_name = (row.findtext("pxRuleClassName") or "").strip()
+        rule_name = (row.findtext("pyRuleName")     or "").strip()
+        obj_class = (row.findtext("pxRuleObjClass") or "").strip()
 
         if not rule_name or not obj_class:
             continue
@@ -703,15 +703,34 @@ def pega_get_implicit_references(params: GetImplicitReferencesInput) -> str:
             continue
         seen.add(dedup_key)
 
-        results.append({
-            "RuleName": rule_name,
-            "RuleType": obj_class,
-        })
+        refs.append({"RuleName": rule_name, "RuleType": obj_class})
 
-    if not results:
+    if not refs:
         return json.dumps([])
 
-    return json.dumps(results, indent=2, ensure_ascii=False)
+    async def _resolve(ref: dict) -> dict:
+        try:
+            data = await _pega_get(
+                "/api/v1/data/D_GetListOfRelatedRules",
+                params={"RuleName": ref["RuleName"], "RuleType": ref["RuleType"]},
+            )
+            related = [
+                {
+                    "pzInsKey":         entry.get("pzInsKey", ""),
+                    "pyClassName":      entry.get("pyClassName", ""),
+                    "pyRuleSet":        entry.get("pyRuleSet", ""),
+                    "pyRuleSetVersion": entry.get("pyRuleSetVersion", ""),
+                    "pyRuleAvailable":  entry.get("pyRuleAvailable", ""),
+                }
+                for entry in data.get("pxResults", [])
+            ]
+        except Exception as e:
+            related = [{"error": _handle_error(e)}]
+
+        return {**ref, "RelatedRules": related}
+
+    resolved = await asyncio.gather(*[_resolve(r) for r in refs])
+    return json.dumps(list(resolved), indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
